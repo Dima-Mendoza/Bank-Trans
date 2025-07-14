@@ -1,58 +1,100 @@
 import asyncio
 import json
-from aiokafka import AIOKafkaConsumer
+from datetime import datetime, time
+from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 from models import Transaction
 
-# 1. Измените порты на 9092 (стандартный для Redpanda)
-BOOTSTRAP_SERVERS = ['localhost:9092']  # Используйте один порт вместо списка
+class FraudDetector:
+    @staticmethod
+    def analyze(tx: Transaction) -> dict:
+        """Анализирует транзакцию по базовым правилам"""
+        alerts = []
+        
+        # Правило 1: Крупные суммы
+        if (tx.currency == "RUB" and tx.amount > 100_000) or \
+           (tx.currency in ["USD", "EUR"] and tx.amount > 10_000):
+            alerts.append("HIGH_AMOUNT")
+        
+        # Правило 2: Подозрительные валюты
+        crypto_currencies = ["XMR", "BTC", "USDT"]
+        if tx.currency in crypto_currencies:
+            alerts.append("CRYPTO_CURRENCY")
+        
+        # Правило 3: Ночные операции
+        if tx.timestamp.time() < time(6, 0) or tx.timestamp.time() > time(23, 59):
+            alerts.append("NIGHT_OPERATION")
+        
+        # Правило 4: Частые микротранзакции
+        if tx.microtransactions_count and tx.microtransactions_count > 15:
+            alerts.append("MICROTRANSACTIONS_FLOOD")
 
-TOPIC = "transactions"
+        return {
+            "is_suspicious": bool(alerts),
+            "alerts": alerts,
+            "risk_score": len(alerts) * 25
+        }
 
-async def main():
+async def create_topic_if_not_exists():
+    producer = AIOKafkaProducer(bootstrap_servers="localhost:9092")
+    await producer.start()
+    try:
+        # Получаем список топиков (синхронно)
+        topics = producer.client.cluster.topics()
+        if "transactions" not in topics:
+            print("Создаю топик transactions...")
+            # Это асинхронный вызов
+            await producer.client.create_topic("transactions", 1, 1)
+    finally:
+        await producer.stop()
+
+async def process_transactions():
+    await create_topic_if_not_exists()
+    
     consumer = AIOKafkaConsumer(
-        TOPIC,
-        bootstrap_servers=BOOTSTRAP_SERVERS,
-        group_id="mvp-consumer-group",
-        enable_auto_commit=True,
-        auto_offset_reset="earliest",
-        # 2. Добавьте таймауты для обработки проблем подключения
+        "transactions",
+        bootstrap_servers="localhost:9092",
+        value_deserializer=lambda v: json.loads(v.decode("utf-8")),
+        group_id="fraud-detection-v1",
         request_timeout_ms=3000,
         session_timeout_ms=10000,
         heartbeat_interval_ms=3000
     )
-
+    
+    await consumer.start()
+    print("Успешно подключено к Kafka")
+    print("Подписка на тему: transactions")
+    
     try:
-        await consumer.start()
-        print(f"Successfully connected to {BOOTSTRAP_SERVERS}")
-        print(f"Subscribed to topic: {TOPIC}")
-        
         async for msg in consumer:
             try:
-                raw_json = msg.value.decode("utf-8")
-                tx = Transaction.model_validate_json(raw_json)
-                print("Processed:", tx.model_dump())
+                tx_data = msg.value
+                print(f"Получена транзакция: {tx_data['id']}")
                 
-                # 3. Добавьте обработку транзакции
-                await process_transaction(tx)
+                # Конвертируем строку времени в datetime
+                if 'timestamp' in tx_data:
+                    tx_data['timestamp'] = datetime.fromisoformat(tx_data['timestamp'])
                 
+                tx = Transaction(**tx_data)
+                result = FraudDetector.analyze(tx)
+                
+                if result["is_suspicious"]:
+                    print(f"""
+                    🚨 Подозрительная транзакция [Риск: {result['risk_score']}%]
+                    ID: {tx.id}
+                    Сумма: {tx.amount} {tx.currency}
+                    Время: {tx.timestamp}
+                    Причины: {", ".join(result['alerts'])}
+                    """)
+                    
             except json.JSONDecodeError as e:
-                print(f"Invalid JSON: {e} | Raw message: {msg.value}")
+                print(f"Неверный JSON: {e} | Данные: {msg.value}")
             except Exception as e:
-                print(f"Processing error: {e}")
-                
+                print(f"Ошибка обработки: {e}")
     except Exception as e:
-        print(f"Kafka connection error: {e}")
+        print(f"Ошибка подключения: {e}")
     finally:
         await consumer.stop()
-        print("Consumer stopped")
-
-async def process_transaction(tx: Transaction):
-    """Дополнительная обработка транзакции"""
-    # Здесь можно добавить:
-    # - Валидацию через rule engine
-    # - Запись в БД
-    # - Отправку уведомлений
-    pass
+        print("Обработчик остановлен")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(process_transactions())
