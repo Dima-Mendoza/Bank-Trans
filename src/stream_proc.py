@@ -2,54 +2,16 @@ import asyncio
 import json
 from datetime import datetime, time
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
-from models import Transaction
+from .models import Transaction
+from .rule_engine import fraud_engine
+from .db import get_session
+from .crud import save_transaction
 
 BOOTSTRAP_SERVERS = [
     'localhost:19092',
     'localhost:10092',
     'localhost:11092',
 ]
-
-class FraudDetector:
-    @staticmethod
-    def analyze(tx: Transaction) -> dict:
-        alerts = []
-        
-        # Правило 1: Крупные суммы
-        if (tx.currency == "RUB" and tx.amount > 300_000) or \
-           (tx.currency in ["USD", "EUR"] and tx.amount > 4000) or \
-           (tx.currency in ["BTC", "XMR"] and tx.amount > 2000):
-            alerts.append("HIGH_AMOUNT")
-        
-        # Правило 2: Подозрительные валюты
-        crypto_currencies = ["XMR", "BTC", "USDT"]
-        if tx.currency in crypto_currencies and tx.currency in ["BTC", "XMR"] and tx.amount > 2000:
-            alerts.append("CRYPTO_CURRENCY")
-        
-        # Правило 3: Ночные операции
-        if tx.timestamp.time() < time(6, 0):
-            alerts.append("NIGHT_OPERATION")
-        
-        # Правило 4: Частые микротранзакции
-        if tx.microtransactions_count is not None and tx.microtransactions_count > 15:
-            alerts.append("MICROTRANSACTIONS_FLOOD")
-
-        return {
-            "is_suspicious": bool(alerts),
-            "alerts": alerts,
-            "risk_score": len(alerts) * 25
-        }
-
-# async def create_topic_if_not_exists():
-#     producer = AIOKafkaProducer(bootstrap_servers="localhost:9092")
-#     await producer.start()
-#     try:
-#         topics = producer.client.cluster.topics()
-#         if "transactions" not in topics:
-#             print("Создаю топик transactions...")
-#             await producer.client.create_topic("transactions", 1, 1)
-#     finally:
-#         await producer.stop()
 
 async def process_transactions():
     # await create_topic_if_not_exists()
@@ -79,7 +41,11 @@ async def process_transactions():
                     tx_data['timestamp'] = datetime.fromisoformat(tx_data['timestamp'])
                 
                 tx = Transaction(**tx_data)
-                result = FraudDetector.analyze(tx)
+                # result = FraudDetector.analyze(tx)
+                result = fraud_engine.analyze(tx)
+
+                with get_session() as db:
+                    save_transaction(tx, db)
                 
                 if result["is_suspicious"]:
                     print(f"""
