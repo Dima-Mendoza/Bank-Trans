@@ -5,27 +5,32 @@ import time
 from datetime import datetime
 from kafka import KafkaProducer
 
-producer = KafkaProducer(
-    bootstrap_servers=[
-    'localhost:19092',
-    'localhost:10092',
-    'localhost:11092',
-    ],
-    value_serializer=lambda v: json.dumps(v).encode('utf-8'),
-)
-
-def gen_tx():
+def generate_transaction():
+    is_suspicious = random.random() < 0.3
+    
     return {
         "id": str(uuid.uuid4()),
-        "amount": round(random.uniform(1, 1000), 2),
-        "currency": "RUB",
+        "amount": random.uniform(1, 150_000),
+        "currency": random.choice(["RUB", "USD", "EUR", "BTC"]),
         "timestamp": datetime.utcnow().isoformat(),
+        "microtransactions_count": random.randint(1, 20) if is_suspicious else 0,
+        "ip": f"192.168.{random.randint(1,255)}.{random.randint(1,255)}"
     }
 
 if __name__ == "__main__":
-    print("Start sending to topic 'transactions'…")
-    while True:
-        tx = gen_tx()
-        producer.send("transactions", tx)
-        print("→", tx)
-        time.sleep(1)
+    producer = KafkaProducer(
+        bootstrap_servers="localhost:9092",
+        value_serializer=lambda v: json.dumps(v).encode("utf-8")
+    )
+    
+    print("Генератор транзакций запущен...")
+    try:
+        while True:
+            tx = generate_transaction()
+            producer.send("transactions", tx)
+            print(f"Отправлена транзакция: {tx['id']} ({tx['amount']:.2f} {tx['currency']})")
+            time.sleep(random.uniform(0.5, 2))
+    except KeyboardInterrupt:
+        print("\nГенератор остановлен")
+    finally:
+        producer.close()
