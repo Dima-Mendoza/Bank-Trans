@@ -54,14 +54,47 @@ def render_dashboard():
             currency_stats = data.groupby("currency")["amount"].sum().reset_index()
             st.bar_chart(currency_stats.set_index("currency"))
 
-            st.subheader("🕒 По времени")
-            time_stats = data.groupby(data["timestamp"].dt.date)["amount"].sum().reset_index()
-            st.line_chart(time_stats.set_index("timestamp"))
+            # st.subheader("🕒 По времени")
+            # time_stats = data.groupby(data["timestamp"].dt.date)["amount"].sum()
+            # st.line_chart(time_stats)
+
+
+            if "is_suspicious" in data.columns:
+                st.subheader("🚨 Подозрительные транзакции")
+
+                suspicious_data = data[data["is_suspicious"] == True]
+
+                if suspicious_data.empty:
+                    st.info("Подозрительных транзакций не найдено.")
+                else:
+                    st.dataframe(suspicious_data, use_container_width=True)
+
+                    # Анализ причин
+                    st.subheader("📌 Причины тревоги")
+                    reasons = suspicious_data.explode("alerts")["alerts"].value_counts()
+                    st.bar_chart(reasons)
+
+                    # Риск
+                    st.subheader("📉 Распределение по уровню риска")
+                    st.bar_chart(suspicious_data["risk_score"].value_counts().sort_index())
+
+                    with st.expander("📖 Описание правил"):
+                        st.markdown("""
+- `HIGH_AMOUNT`: Сумма превышает допустимый лимит.
+- `CRYPTO_CURRENCY`: Криптовалюта, сумма выше $2000.
+- `NIGHT_OPERATION`: Транзакция до 6 утра.
+- `MICROTRANSACTIONS_FLOOD`: Много микротранзакций.
+- `STRUCTURING`: Сумма близка к пороговой.
+- `REPEATED_TRANSACTIONS`: Повторяющиеся операции за короткое время.
+- `OFFSHORE_OPERATION`: IP из офшорных диапазонов.
+                        """)
+
+
 
     except Exception as e:
         st.error(f"❌ Ошибка при загрузке данных: {e}")
 
-# 🔁 Автообновление
+
 while True:
     with placeholder.container():
         render_dashboard()
