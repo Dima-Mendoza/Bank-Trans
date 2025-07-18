@@ -6,6 +6,7 @@ from .models import Transaction
 from .rule_engine import fraud_engine
 from .db import get_session
 from .crud import save_transaction
+from src.logger import logger
 
 BOOTSTRAP_SERVERS = [
     'localhost:19092',
@@ -27,8 +28,8 @@ async def process_transactions():
     )
     
     await consumer.start()
-    print("Успешно подключено к Kafka")
-    print("Подписка на тему: transactions")
+    logger.info("Успешно подключено к Kafka")
+    logger.info("Подписка на тему: transactions")
     
     try:
         async for msg in consumer:
@@ -45,7 +46,13 @@ async def process_transactions():
                 result = fraud_engine.analyze(tx)
 
                 with get_session() as db:
-                    save_transaction(tx, db)
+                    save_transaction(
+                        tx,
+                        db,
+                        is_suspicious=result["is_suspicious"],
+                        alerts=result["alerts"],
+                        risk_score=result["risk_score"]
+                    )
                 
                 if result["is_suspicious"]:
                     print(f"""
@@ -68,43 +75,3 @@ async def process_transactions():
 
 if __name__ == "__main__":
     asyncio.run(process_transactions())
-
-# BOOTSTRAP_SERVERS = [
-#     'localhost:19092',
-#     'localhost:10092',
-#     'localhost:11092',
-# ]
-
-# TOPIC = "transactions"
-
-
-# async def main():
-#     consumer = AIOKafkaConsumer(
-#         TOPIC,
-#         bootstrap_servers=BOOTSTRAP_SERVERS,
-#         group_id="mvp-consumer-group",
-#         enable_auto_commit=True,
-#         auto_offset_reset="earliest",
-#         # request_timeout_ms=3000,
-#         # session_timeout_ms=10000,
-#         # heartbeat_interval_ms=3000
-#     )
-
-#     await consumer.start()
-#     print(f"Subscribed to topic: {TOPIC}")
-#     try:
-#         async for msg in consumer:
-#             try:
-#                 raw_json = msg.value.decode("utf-8")
-#                 tx = Transaction.model_validate_json(raw_json)
-#                 print("Processed:", tx.model_dump())
-
-#                 # сюда потом rule engine + запись в БД
-#             except Exception as e:
-#                 print(f"Failed to parse message: {e}")
-#     finally:
-#         await consumer.stop()
-
-
-# if __name__ == "__main__":
-#     asyncio.run(main())
