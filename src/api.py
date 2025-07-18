@@ -15,3 +15,6 @@ app = FastAPI(title="BankTrans API", version="1.0")
 def list_transactions(limit: int = 100, db: Session = Depends(get_session)):
     return db.query(TransactionDB).order_by(TransactionDB.timestamp.desc()).all()
 
+# def list_transactions(limit: int = 100, db: Session = Depends(get_session)):
+#     rows = db.query(TransactionDB).order_by(TransactionDB.timestamp.desc()).limit(limit).all()
+#     return [Transaction(**row.__dict__) for row in rows]
