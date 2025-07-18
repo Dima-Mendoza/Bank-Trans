@@ -1,14 +1,17 @@
 from sqlalchemy.orm import Session
 from .models import Transaction, TransactionDB
 
-def save_transaction(tx: Transaction, db: Session):
+def save_transaction(tx: Transaction, db: Session, is_suspicious: bool = False, alerts: list[str] = None, risk_score: int = 0):
     db_tx = TransactionDB(
         id=tx.id,
         amount=tx.amount,
         currency=tx.currency,
         timestamp=tx.timestamp,
         microtransactions_count=tx.microtransactions_count,
-        ip=tx.ip
+        ip=tx.ip,
+        is_suspicious=is_suspicious,
+        alerts=alerts or [],
+        risk_score=risk_score
     )
     db.add(db_tx)
     db.commit()
