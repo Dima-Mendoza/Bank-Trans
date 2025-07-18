@@ -6,6 +6,17 @@ from datetime import datetime
 from kafka import KafkaProducer
 
 def generate_transaction():
+    # 10% chance для тестового оповещения
+    if random.random() < 0.1:
+        return {
+            "id": "TEST_ALERT",
+            "amount": 150000,
+            "currency": "RUB",
+            "timestamp": datetime.utcnow().isoformat(),
+            "microtransactions_count": 20,
+            "ip": "192.168.1.100"
+        }
+    
     is_suspicious = random.random() < 0.3
     
     return {
