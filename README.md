@@ -65,10 +65,10 @@ Key packages (see `pip list`):
 
 ## 🗺️ Roadmap
 
-* [ ] Rule engine for fraud/anomaly detection
-* [ ] Persistence layer (PostgreSQL / ClickHouse / SQLite)
-* [ ] Alerting mechanism (email, Telegram, etc.)
-* [ ] Dashboard & REST API (FastAPI + Grafana/Streamlit)
+* [X] Rule engine for fraud/anomaly detection
+* [X] Persistence layer (PostgreSQL / ClickHouse / SQLite)
+* [X] Alerting mechanism (email, Telegram, etc.)
+* [X] Dashboard & REST API (FastAPI + Grafana/Streamlit)
 
 ---
 
